@@ -17,13 +17,17 @@ from stl import mesh
 import matplotlib.tri as mtri
 import time
 import math 
-
+from mpl_toolkits.mplot3d.art3d import Poly3DCollection
+import matplotlib.tri as tri
+from tqdm import tqdm
 ##-----------패러미터--------------------------------------------------+
-s=10.0 #폐곡선 표면부터 극판까지의 거리 
-d_1=10.0 #세라믹 두께
-d_2=10.0 #극판 두께
-a=20.0 #극판의 반지름 
-div_c=150 #원판의 둘레를 나눈 수 
+s=3.0 #폐곡선 표면부터 극판까지의 거리, 하이드로 겔 의 두께임 (mm 단위임 )
+d_1=0.3 #세라믹 두께
+d_2=1.0 #극판 두께
+a=9.0 #극판의 반지름 
+div_c=200 #원판의 둘레를 나눈 수 
+edge_xy=21
+edge_z=30 # 사각형 패치의 길이의 절반값
 now=time.localtime(time.time())
 #----------그래프 조정-----------------------------------------------------+
 fig = plt.figure()
@@ -35,9 +39,9 @@ plt.xlim(-100,100) #x 축 범위
 plt.ylim(-100,100) 
 ax.set_zlim(-100,100)
 
-#-------------몸 곡면(구)-----------------------------------------+
+#-------------몸 곡면-----------------------------------------+
 def head_surface():
-    mni2=open('./mni2.poly','r')
+    mni2=open('./mni4.poly','r')
     lines=mni2.readlines()
     l=[]
     for i in lines:
@@ -55,19 +59,35 @@ def head_surface():
     
     for i in range(len(data)):
         if 1<=i<=node_num:
-            node[i]=[float(data[i][1]),float(data[i][2]),float(data[i][3])]
+            node[i]=[int(data[i][4]),float(data[i][1]),float(data[i][2]),float(data[i][3])]
     face_num=int(data[node_num+1][0])
         
     for i in range(face_num):
         facet[i+1]=[-1,int(data[node_num+2*i+3][1]),int(data[node_num+2*i+3][2]),int(data[node_num+2*i+3][3])]
     
     region={}
-    region[1]=[0,0,0,1]
-    body_node_num=len(node)
     
-    return node, facet, region, body_node_num
+    skin={}
+    for i in range(len(node)):
+        if node[i+1][0]==1005:
+           skin[i+1]=np.array(node[i+1][1:]) #앞에는 node 에서의 넘버링, 뒤에는 좌표  
+    
+    body_node_num=list(skin.keys())[0]
+    return node, facet, region, skin, body_node_num
 
-node, facet, region, body_node_num=head_surface()
+
+node, facet, region, skin, body_node_num=head_surface()
+
+#------------ 트라이 앵글 메쉬 그리기----------------------------+
+'''def triangle(node,facet):
+    element=[]
+    for i in range(len(facet)):
+        element.append([node[facet[i+1][1]],node[facet[i+1][2]],node[facet[i+1][3]]])
+    ax.add_collection3d(Poly3DCollection(element, 
+    facecolors='cyan', linewidths=0.1, edgecolors='y', alpha=0.1))
+    plt.show()
+triangle(node,facet)'''
+
 #------------좌표추출-------------------------------------------+
 def cor(p):
     if p.count('x')>=1:           
@@ -81,10 +101,10 @@ def cor(p):
             cx=float(c[0])
             cy=float(c[1])
             cz=float(c[2])
-            i=distance(cx,cy,cz,body_node_num)
-            kx=node[i][0]
-            ky=node[i][1]
-            kz=node[i][2]
+            i=distance(cx,cy,cz)
+            kx=skin[i][0]
+            ky=skin[i][1]
+            kz=skin[i][2]
             return kx,ky,kz,i
     else :
             s=p.split(',')
@@ -97,13 +117,13 @@ def cor(p):
             print(d)
 
 #-------------거리가까운 메시의 좌표특정을 위한 거 ---------------------+
-def distance(x,y,z,limit): #최단거리에 해당하는 node의 넘버를 뽑는것 바디를 구분해야 하기에 limit을 너음   
+def distance(x,y,z): #최단거리에 해당하는 node의 넘버를 뽑는것 바디를 구분해야 하기에 limit을 너음   
     d=[]
-    for i in range(limit):
-        c=(x-node[i+1][0])**2+(y-node[i+1][1])**2+(z-node[i+1][2])**2
+    for i in range(len(skin)):
+        c=(x-skin[body_node_num+i][0])**2+(y-skin[body_node_num+i][1])**2+(z-skin[body_node_num+i][2])**2
         d.append(c)
     e=d.index(min(d))
-    return e+1  #+1을 하는 이유는, 현재 노드의 넘버링이 1부터 돼 있기 때문이다. 
+    return body_node_num+e #+1을 하는 이유는, 현재 노드의 넘버링이 1부터 돼 있기 때문이다. 
 '''리턴값을 e로해서, 좌표자체를 특정하는게 아니라 좌표가 리스트에서 존재하는 
 위치를 특정하는거임 여기서 e_1은 z의 좌표 e_2 x,y 의 좌표 '''
 
@@ -135,10 +155,11 @@ def on_dblclick(event,i,s,d_1,d_2,a):
     global time
     print("You double-clicked", event.button, event.xdata, event.ydata)
     time = None
-    flat_plate(i,s,d_1,d_2,a)
+    all_plate(i,edge_xy, edge_z)
+    
     global click_num 
     click_num=click_num+1
-    print(click_num)
+    print('click_num=%d'%click_num)
     return click_num
     
 ##----------- 싱글 클릭할 때 ---------------------------------------+
@@ -157,11 +178,13 @@ def n_vector(i): #x,y,z 를 입력하면 벡터가 나오는 것으로 되있는
     l=[]
     for j in list(facet.values()):
         l.append(j[1])
-    i2=l.index(i)
+        l.append(j[2])
+        l.append(j[3])
+    i2=int(l.index(i)/3)
     facet_number=i2+1
-    p1=np.array(node[facet[facet_number][1]])
-    p2=np.array(node[facet[facet_number][2]])
-    p3=np.array(node[facet[facet_number][3]])
+    p1=skin[facet[facet_number][1]]
+    p2=skin[facet[facet_number][2]]
+    p3=skin[facet[facet_number][3]]
     v1=p2-p1
     v2=p3-p1
     n_v=np.cross(v1, v2)
@@ -174,9 +197,9 @@ def n_vector(i): #x,y,z 를 입력하면 벡터가 나오는 것으로 되있는
 #-------------평평한 극판---------------------------------------+
 def cylinder(i,s,d_1,d_2,r): 
     '''x,y,z 는 폐곡선 위의 좌표, s는 아랫면 까지의 거리, d_1은 아래쪽 세라믹 두께, d_2는 위쪽 극판두께, r은 반지름'''
-    x=node[i][0]
-    y=node[i][1]
-    z=node[i][2]
+    x=skin[i][0]
+    y=skin[i][1]
+    z=skin[i][2]
     t = np.array([0,d_1,d_1+d_2]) # 층을 3개로 강제로 나눈다
     theta = np.linspace(0, 2 * np.pi, div_c) #2pi 를 50개로 분해 
     radi = np.linspace(0, r, 2) #반지름을 중점과 끝점으로만 분해 
@@ -210,12 +233,12 @@ def cylinder(i,s,d_1,d_2,r):
     return X1, Y1, Z1, X2, Y2, Z2, X3, Y3, Z3, X4, Y4, Z4 # 모든좌표를 다 추출한것
 
 #-------------3d flat plate---------------------------------------+
-def flat_plate(i,s,d_1,d_2,r):
+def flat_plate(j,i,s,d_1,d_2,r):
     '''x,y,z 는 폐곡선 위의 찍은 점의 좌표, s는 찍은 점부터 극판 까지의 거리
     d 는 극판 두께, r은 극판 반지름 '''
-    x=node[i][0]
-    y=node[i][1]
-    z=node[i][2]
+    x=skin[i][0]
+    y=skin[i][1]
+    z=skin[i][2]
     x1,y1,z1,x2,y2,z2,x3,y3,z3,x4,y4,z4= cylinder(i,s,d_1,d_2,r) #4가 세라믹의 좌표임 
     x_list=pick_p(x2)
     y_list=pick_p(y2)
@@ -227,10 +250,9 @@ def flat_plate(i,s,d_1,d_2,r):
     p=np.array(p) # 아랫면의 둘레에 있는 위치벡터들의 리스트 
     
     output2(x1,y1,z1,x2,y2,z2,x3,y3,z3,x4,y4,z4)
-    output3(x,y,z,v)
+    output3(j,x,y,z,v)
     near_point(p)
     num=delit (facet)
-    print(region)
     print(len(node))
     print(len(facet))
     export1(node,facet,num)
@@ -268,11 +290,11 @@ def delit (facet):
 def output2(x1,y1,z1,x2,y2,z2,x3,y3,z3,x4,y4,z4):
     point=[]
 
-    for i in range(div_c) :
+    for i in range(div_c-1) :
         point.append([x1[i][0],y1[i][0],z1[i][0]])
-    for i in range(div_c) : # 합치면 안된다. 노드의 순서가 달라짐 
+    for i in range(div_c-1) : # 합치면 안된다. 노드의 순서가 달라짐 
         point.append([x1[i][1],y1[i][1],z1[i][1]])
-    for i in range(div_c) : # 합치면 안된다. 노드의 순서가 달라짐 
+    for i in range(div_c-1) : # 합치면 안된다. 노드의 순서가 달라짐 
         point.append([x1[i][2],y1[i][2],z1[i][2]])
         
     point.append([x2[0][0],y2[0][0],z2[0][0]])
@@ -281,52 +303,62 @@ def output2(x1,y1,z1,x2,y2,z2,x3,y3,z3,x4,y4,z4):
     
     many=len(node)
     for i in range(len(point)):
-        node[many+i+1]=point[i]
+        node[many+i+1]=[1]+point[i]
     
     many2=len(facet)
     facet_list=[]
     for i in range(2): #층이 세개여서 면으로 이루어진 층은 세개의 층이다
-        for j in range(div_c): 
-            if j < div_c-1: #j가 0~48까지, 즉 노드 넘버로는 1~49, 극판의 동그란 면 만드는 것 
-                facet_list.append([-1,many+(i)*div_c+j+1,many+(i)*div_c+j+2,many+3*div_c+i+1])
+        for j in range(div_c-1): #j가 0~48까지, 즉 노드 넘버로는 1~49, 극판의 동그란 면 만드는 것 
+            if j<div_c-2: 
+                facet_list.append([-1,many+(i)*(div_c-1)+j+1,many+(i)*(div_c-1)+j+2,many+3*(div_c-1)+i+1])
+            else:
+                facet_list.append([-1,many+(i)*(div_c-1)+j+1,many+(i)*(div_c-1)+0+1,many+3*(div_c-1)+i+1])
     
-    for j in range(div_c): 
-            if j < div_c-1: #i=2 일때만 따로 만들어 준 것이다. 전압주는 부분의 바운데리를 나눠야 해서 
-                facet_list.append([click_num+1,many+(2)*div_c+j+1,many+(2)*div_c+j+2,many+3*div_c+2+1])
+    for j in range(div_c-1): #i=2 일때만 따로 만들어 준 것이다. 전압주는 부분의 바운데리를 나눠야 해서     
+        if j<div_c-2:     
+            facet_list.append([click_num+1,many+(2)*(div_c-1)+j+1,many+(2)*(div_c-1)+j+2,many+3*(div_c-1)+2+1])
+        else:
+            facet_list.append([click_num+1,many+(2)*(div_c-1)+j+1,many+(2)*(div_c-1)+0+1,many+3*(div_c-1)+2+1])
                 
             
     for i in range(2): #
-        for j in range(div_c): 
-                if j < div_c-1: #j가 0~48까지, 즉 노드 넘버로는 1~49, 극판의 옆면만드는 것 
-                    facet_list.append([-1,many+i*div_c+j+1,many+i*div_c+j+2,many+(i+1)*div_c+j+2])
-                    facet_list.append([-1,many+(i+1)*div_c+j+2,many+(i+1)*div_c+j+1,many+i*div_c+j+1])
+        for j in range(div_c-1): #j가 0~48까지, 즉 노드 넘버로는 1~49, 극판의 옆면만드는 것
+                if j < div_c-2:  #j=0~47
+                    facet_list.append([-1,many+i*(div_c-1)+j+1,many+i*(div_c-1)+j+2,many+(i+1)*(div_c-1)+j+2])
+                    facet_list.append([-1,many+(i+1)*(div_c-1)+j+2,many+(i+1)*(div_c-1)+j+1,many+i*(div_c-1)+j+1])
+                else: #48
+                    facet_list.append([-1,many+i*(div_c-1)+j+1,many+i*(div_c-1)+0+1,many+(i+1)*(div_c-1)+0+1])
+                    facet_list.append([-1,many+(i+1)*(div_c-1)+0+1,many+(i+1)*(div_c-1)+j+1,many+i*(div_c-1)+j+1])
             
     for i in range(len(facet_list)):
         facet[many2+i+1]=facet_list[i]
         
 
-def output3(x,y,z,v):
+def output3(j,x,y,z,v):
     point=np.array([x,y,z])
     point1=point+(s/2)*v
     point2=point+(s+d_1/2)*v
     point3=point+(s+d_1+d_2/2)*v
-    region[3*click_num+2]=[point1[0],point1[1],point1[2],2]
-    region[3*click_num+3]=[point2[0],point2[1],point2[2],3]
-    region[3*click_num+4]=[point3[0],point3[1],point3[2],4]
+    region[3*j+1]=[point1[0],point1[1],point1[2],1] # 리전 1 은 하이드로 갤
+    region[3*j+2]=[point2[0],point2[1],point2[2],2] # 리전 2 은 세라믹 
+    region[3*j+3]=[point3[0],point3[1],point3[2],3] # 리전 3 은 구리
 
-#-----------니어 포인트---------------------------------------------------#
+#----------- 니어 포인트, 하이드로겔 부분 만드는 것 ---------------------------------------------------#
 def near_point(p):
     many=len(node)
     many2=len(facet)
     point_num=[] #NODE 넘버의 리스트 
-    for i in range(len(p)):
-        e=distance(p[i][0],p[i][1],p[i][2],body_node_num)
+    for i in range(len(p)-1):
+        e=distance(p[i][0],p[i][1],p[i][2])
         point_num.append(e)
-    print(point_num)
-    for i in range(len(point_num)):
-        if i<len(point_num)-1: 
-            facet[many2+2*i+1]=[-1,many-(3*div_c+3)+i+1,point_num[i],many-(3*div_c+3)+i+2] 
-            facet[many2+2*i+2]=[-1,many-(3*div_c+3)+i+2,point_num[i],point_num[i+1]]
+        
+    for i in range(len(point_num)): #0~48
+        if i<len(point_num)-1: #0~47
+            facet[many2+2*i+1]=[-1,many-(3*div_c)+i+1,point_num[i],many-(3*div_c)+i+2] 
+            facet[many2+2*i+2]=[-1,many-(3*div_c)+i+2,point_num[i],point_num[i+1]]
+        else : #48
+            facet[many2+2*i+1]=[-1,many-(3*div_c)+i+1,point_num[i],many-(3*div_c)+0+1] 
+            facet[many2+2*i+2]=[-1,many-(3*div_c)+0+1,point_num[i],point_num[0]]
             
     
 def export1(node,face,num):
@@ -336,7 +368,7 @@ def export1(node,face,num):
     f.write('{} 3 0 0\n'.format(len(node)))
     f.write('# Node index, node coordinates\n')
     for i in range(len(node)):
-        f.write('{} {} {} {}\n'.format(i+1,node[i+1][0],node[i+1][1],node[i+1][2]))
+        f.write('{} {} {} {}\n'.format(i+1,node[i+1][1],node[i+1][2],node[i+1][3]))
     f.write('# Part 2 - facet list\n')
     f.write('# facet count, have boundary marker\n')
     f.write('{} 1\n'.format(len(num)))
@@ -351,6 +383,73 @@ def export1(node,face,num):
     for i in range(len(region)):
         f.write('{} {} {} {} {}\n'.format(i+1, region[i+1][0],region[i+1][1],region[i+1][2],region[i+1][3]))
     
+def multi_i(i,edge_xy, edge_z): # 한점 잡았을때 9개의 점을 잡아준는 펑션, i는 노드 넘버,edge는 사각형의 변길이의 절반  
+    n_v,v1=n_vector(i) #우선 뽑은 점의 법선벡터를 구함
+    #d=np.dot(skin[i],n_v)
+    v_1=np.cross(np.array([0,0,1]),n_v) #z축 방향이 아닌 벡터, 즉 xy 벡터, 반시계로 돌게 헀음 
+    v_1=v_1/norm(v_1)
+    v_2=np.cross(n_v,v_1)
+    v_2=v_2/norm(v_2) #z축방향 변화, +쪽이 위쪽임 
+    p=[]
+    p.append(skin[i]+edge_xy*v_1)
+    p.append(skin[i]+edge_xy*v_1+edge_z*v_2)
+    p.append(skin[i]+edge_z*v_2)
+    p.append(skin[i]+edge_xy*-v_1+edge_z*v_2)
+    p.append(skin[i]+edge_xy*-v_1)
+    p.append(skin[i]+edge_xy*-v_1-edge_z*v_2)
+    p.append(skin[i]+edge_z*-v_2)
+    p.append(skin[i]+edge_xy*v_1-edge_z*v_2)
+    result=[]
+    result.append(i)
+    for i in p:
+        result.append(distance(i[0],i[1],i[2]))
+        
+    return result 
 
+    
+
+def opposit_side(i,n_v):
+    point_vec=[]
+    for j in range(len(skin)):
+        v=skin[body_node_num+j]-skin[i]
+        if not norm(v)==0:
+            v=v/norm(v)
+            point_vec.append(v)
+        else:    
+            point_vec.append(v)
+    
+    dot=[]
+    for j in range(len(point_vec)):
+        if not norm(point_vec[j])==0:
+            dot.append([body_node_num+j,abs(np.dot(n_v,point_vec[j]))])
+                
+    dot2=[]
+    for j in dot:
+        dot2.append(j[1])
+    k=dot2.index(max(dot2))
+    i2=dot[k][0]
+    i3=distance(skin[i2][0],skin[i2][1],skin[i][2])
+    return i3
+    
+            
+def all_plate(i,edge_xy, edge_z):
+    result1=multi_i(i,edge_xy, edge_z)
+    n_v,v1=n_vector(i)
+    i3=opposit_side(i,n_v)
+    result2=multi_i(i3,edge_xy, edge_z)
+    result=result1+result2
+    for j in tqdm(range(len(result)), desc="plate", mininterval=1):
+        if j<=8:
+            flat_plate(j,result[j],s,d_1,d_2,a)
+        elif j==9:
+            global click_num 
+            click_num=click_num+1
+            flat_plate(j,result[j],s,d_1,d_2,a)
+        else: 
+            flat_plate(j,result[j],s,d_1,d_2,a)
+    return click_num
 print(len(node))
 print(len(facet))
+
+
+

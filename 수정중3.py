@@ -28,6 +28,7 @@ switch='all' #1개 붙일지 모두 붙일지 선택하는 변수
 s=3.0 #폐곡선 표면부터 극판까지의 거리, 하이드로 겔 의 두께임 (mm 단위임 )
 d_1=0.2 #세라믹 두께
 d_2=1.0 #극판 두께
+
 a=9.0 #극판의 반지름 
 div_c=4#원판의 둘레를 나눈 수 
 div_t=30 # 종양의 둘레를 나눈 수 
@@ -321,6 +322,8 @@ def on_dblclick(event,switch,i,s,d_1,d_2,a):
     
     
     click_num=click_num+1
+    print(len(node))
+    print(len(facet))
     print('click_num=%d'%click_num)
     return click_num
     
@@ -424,8 +427,6 @@ def flat_plate(j,i,s,d_1,d_2,r):
     del_facet=make_hydrogel(interest_facet,neighbor,new_node_in_circle,v,many_dic)
     delete_facet(del_facet)
     
-    print(len(node))
-    print(len(facet))
     
 #----------보조 함수 ----------------------------+
 def pick_p(a): #원판 둘레의 포인트를 뽑기위한 함수
@@ -1040,11 +1041,11 @@ def split_facet(face_point):
                     
                 small=length.index(min(length))
                 if small==0:
-                    print('스몰')
+                    
                     point2_list= [point[0], face_point2[i][1][0], point[1]]
                 else:
                     point2_list= [point[1], face_point2[i][1][0], point[0]]
-                    print('빅')
+                    
                 count_p=0
                 point2 = point2_list[count_p]
                 
@@ -1069,13 +1070,13 @@ def split_facet(face_point):
                         v2=v2/norm(v2)
                         v3=np.cross(v1,v2)
                         if np.dot(v0,v3)>0:
-                            print('플')
+                            
                             facet[many_facet+g]=[1005,face_point2[i][2][j],face_point2[i][2][j+1],
                                              skin_facet[face_point2[i][0]][point2-1]]
                             g+=1
                          
                         else :
-                            print('마')
+                           
                             if point2==point2_list[1]:
                                 facet[many_facet+g]=[1005,face_point2[i][2][j],skin_facet[face_point2[i][0]][point2-1],
                                                      skin_facet[face_point2[i][0]][point2_list[count_p+1]-1]]
@@ -1124,7 +1125,7 @@ def split_facet(face_point):
                             g+=3
                         
                 if point2==point2_list[1]:
-                    print()
+                   
                     facet[many_facet+g]=[1005,face_point2[i][2][-1],skin_facet[face_point2[i][0]][point2-1],
                                              skin_facet[face_point2[i][0]][point2_list[2]-1]]
                     g+=1
@@ -1139,7 +1140,7 @@ def split_facet(face_point):
                     face_point2_overlab[i_list[i]]=face_point2_overlab[i_list[i]][2:]+face_point2_overlab[i_list[i]][:2]'''
                     
                 
-    print(face_point2_overlab)
+    #print(face_point2_overlab)
     
     for i in face_point2_overlab:
         if face_point2_overlab[i][0][1]==face_point2_overlab[i][2][0]:
@@ -1383,3 +1384,7 @@ def plat_num(click_num):
 
 print(len(node))
 print(len(facet))
+
+
+
+#-----------END----------------------------------------------------------------------------------------------+
